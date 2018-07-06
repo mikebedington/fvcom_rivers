@@ -403,7 +403,7 @@ def get_pyfvcom_prep(river_obj_list, start_date, end_date, ersem=False, ersem_va
 			this_nutrient = []
 			for this_river in river_obj_list:
 				this_nutrient.append(this_river.getNutrientSeries(this_var, start_date, end_date)[1])
-			ersem_dict[this_var] = np.asarray(this_nutrient).T
+			ersem_dict[this_var] = np.squeeze(np.asarray(this_nutrient).T)
 
 	else:
 		ersem_dict = False
