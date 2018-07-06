@@ -29,7 +29,22 @@ class ltls_data_store():
 			flux_raw.append(flow_nc.variables['river_flux'][:, this_index[0], this_index[1]])
 		self.river_flux = np.sum(np.asarray(flux_raw), axis=0)
 
-	def retrieve_nutrient(self, nutrient_nc):
+	def make_nutrient_conc(self, atom_weights=None, ox_weight=None):
+		if atom_weights is None:
+			atom_weights = {'dic':12 , 'tdp':30.9, 'amm':14, 'nit':14}
+
+		for this_nutrient_var in atom_weights.keys():
+			this_nutrient_raw = getattr(self, this_nutrient_var)
+			this_grams_per_m_3 = ((this_nutrient_raw/self.flow) * (10**6)) / (60*60*24)
+			this_mmol_per_gram = (this_grams_per_m_3 * 1000)/atom_weights[this_nutrient_var]
+			setattr(self, this_nutrient_var + '_conc', np.asarray(this_mmol_per_gram))
+
+		if ox_weight is None:
+			ox_weight = 32
+		
+		setattr(self, 'O2_conc', getattr(self, 'O2')*ox_weight)
+
+	def retrieve_monthly_nutrient(self, nutrient_nc):
 		self.times_monthly.month = nutrient_nc.variables['month'][:]
 		self.times_monthly.year = nutrient_nc.variables['year'][:]
 		self.times_monthly.time_dt = np.asarray([dt.datetime(this_year, this_month, 15,0,0) for this_year, this_month in zip(self.times_monthly.year, self.times_monthly.month)])
@@ -50,7 +65,7 @@ class ltls_data_store():
 
 			setattr(self.month_data, this_var, this_var_proc)
 
-	def make_nutrient_conc(self, atom_weights=None):
+	def make_nutrient_monthly_conc(self, atom_weights=None, ox_weight=None):
 		if not hasattr(self.times_monthly, 'month'):
 			print('No nutrient data retrieved yet')
 			return
@@ -68,9 +83,18 @@ class ltls_data_store():
 				this_nutrient_concs.append(this_mmol_per_gram)
 			setattr(self.month_data, this_nutrient_var + '_conc', np.asarray(this_nutrient_concs))
 
+		if ox_weight is None:
+			ox_weight = 32
+
+		setattr(self.month_data, 'O2_conc', getattr(self.month_data, 'O2')*ox_weight)
+
 	def get_daily_flow(self, start_date, end_date):
 		time_sel = np.logical_and(self.time_dt >= start_date, self.time_dt <= end_date)
 		return self.time_dt[time_sel], self.river_flux[time_sel]
+
+	def get_nutrient_daily(self, start_date, end_date, nutrient):
+		choose_dates = np.logical_and(self.time_dt >= start_date, self.time_dt <= end_date)	
+		return self.time_dt[choose_dates], getattr(self, nutrient)[choose_dates]
 
 	def get_nutrient_daily_interp(self, start_date, end_date, nutrient):
 		ref_date = dt.datetime(1900,1,1)
@@ -152,7 +176,6 @@ class ltls_comp_river():
 		plt.savefig(self.river_obj.river_name + '_month_flux_comp.png', dpi=300)
 		plt.close()
 
-
 	def getGaugeFluxSeries(self, start_date, end_date):
 		"""
 		Get the predicted flux (underlying river object gauge flux (observed or modelled) then with ltls rescaling applied
@@ -171,7 +194,7 @@ class ltls_comp_river():
 		"""
 
 		if hasattr(self,'use_ltls_temp') and self.use_ltls_temp:
-			date_list, temp_list = self.ltls_data_store.get_nutrient_daily_interp(start_date, end_date, 'temp')
+			date_list, temp_list = self.getNutrientSeries('temp', start_date, end_date)
 		else:	
 			date_list, temp_list = self.river_obj.getTempModelSeries(start_date,end_date)
 
@@ -179,8 +202,8 @@ class ltls_comp_river():
 
 	def getNutrientSeries(self, nutrient_name, start_date, end_date):
 		"""
-		Get a nutrient series. If it exists in LTLS then it the monthly LTLS data interpolated to daily is used, if not it is taken from
-		the associated nemo object if it exists there or if not (or if no nemo object exists) then zeros are returned.
+		Get a nutrient series. In order of priority if available it returns LTLS daily data, then monthly LTLS data interpolated to daily, then
+		the associated nemo object, or if none of the above then zeros are returned.
 
 		Returns
 		-------
@@ -190,15 +213,18 @@ class ltls_comp_river():
 			Nutrient values, zeros if neither ltls or nemo data are available
 
 		"""
-		ersem_to_ltls_var = {'N4_n':'amm_conc', 'N3_n':'nit_conc', 'O2_o':'O2', 'N1_p':'tdp_conc'}
+		ersem_to_ltls_var = {'N4_n':'amm_conc', 'N3_n':'nit_conc', 'O2_o':'O2_conc', 'N1_p':'tdp_conc', 'temp':'temp'}
 	
 		if nutrient_name in ersem_to_ltls_var.keys():
 			this_ltls = ersem_to_ltls_var[nutrient_name]
-			date_list, nutrient_list = self.ltls_data_store.get_nutrient_daily_interp(start_date, end_date, this_ltls)
+			if hasattr(self.ltls_data_store, this_ltls):
+				date_list, nutrient_list = self.ltls_data_store.get_nutrient_daily(start_date, end_date, this_ltls)
+			else:
+				date_list, nutrient_list = self.ltls_data_store.get_nutrient_daily_interp(start_date, end_date, this_ltls)
 		elif hasattr(self, 'nemo_river_obj') and hasattr(self.nemo_river_obj, nutrient_name):
 			date_list, nutrient_list = self.nemo_river_obj.getNutrientSeries(nutrient_name, start_date, end_date)
 		else:
-			date_list = [start_date + dt.timedelta(days=i) for i in np.arange(0, (end_date - start_date).days +1)] 
+			date_list = [start_date + dt.timedelta(days=int(i)) for i in np.arange(0, (end_date - start_date).days +1)] 
 			nutrient_list = np.zeros(len(date_list))
 
 		return date_list, nutrient_list
