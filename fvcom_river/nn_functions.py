@@ -23,7 +23,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
 
-
 def windowSum(data, window):
 	output = np.zeros([len(data),1])
 	output[0:window,0] = np.sum(data[0:window])
@@ -34,14 +33,12 @@ def windowSum(data, window):
 	
 	return output
 
-
 def lagData(data, lag):
 	output = np.zeros([len(data),1])
 	output[0:lag,0] = data[0]
 	output[lag:,0] = data[0:-lag]	
 
 	return output
-
 
 def baseline_model(input_len, node_width):
     # create model
@@ -52,9 +49,7 @@ def baseline_model(input_len, node_width):
     model.compile(loss='mean_squared_error', optimizer='adam')
     return model
 
-
 def modelErrorMetrics(preds, obs):
-
     rmse = np.sqrt(((preds - obs)**2).mean())
     print('RMSE - '+str(rmse))
 
@@ -65,7 +60,6 @@ def modelErrorMetrics(preds, obs):
     print('Nash-Sutcliffe efficiency - '+str(nss))
 
     return np.asarray([rmse, corr[0], nss])
-
 
 def runNNtrain(train_flux, train_data, no_epochs):
 
@@ -83,7 +77,6 @@ def runNNtrain(train_flux, train_data, no_epochs):
 	# output the model and the error metrics
 	return [nn_scaler, nn_model]
 
-
 def nn_create_run_data(precipitation, temp,  precipitation_sums_lags, temp_sums_lags):
 	nn_run_data = np.asarray([precipitation, temp]).T
 
@@ -100,7 +93,6 @@ def nn_create_run_data(precipitation, temp,  precipitation_sums_lags, temp_sums_
 		nn_run_data = np.append(nn_run_data, lagData(nn_run_data[:,1], this_lag), axis=1)
 
 	return nn_run_data
-
 
 def create_generic_nn(river_dict, generic_model_files=None, train_dates=None, pt_sums_lags=None):
 	if generic_model_files is None:
