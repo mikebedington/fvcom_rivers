@@ -413,5 +413,22 @@ def get_pyfvcom_prep(river_obj_list, start_date, end_date, ersem=False, ersem_va
 	else:
 		ersem_dict = False
 
-	return np.asarray(positions), np.asarray(names), np.asarray(times), flux_array, temperature, salinity_array, ersem_dict
+	if sediment:
+		if sediment_vars is None:
+			sediment_vars = ['mud_1']
+
+		sediment_dict = {}
+
+		for this_var in sediment_vars:
+			if noisy:
+				print('Adding sediment variable {}'.format(this_var))
+			this_sediment = []
+			for this_river in river_obj_list:
+				this_sediment.append(this_river.getNutrientSeries(this_var, start_date, end_date)[1])
+			sediment_dict[this_var] = np.squeeze(np.asarray(this_sediment).T)
+
+	else:
+		sediment_dict = False
+
+	return np.asarray(positions), np.asarray(names), np.asarray(times), flux_array, temperature, salinity_array, ersem_dict, sediment_dict
 
