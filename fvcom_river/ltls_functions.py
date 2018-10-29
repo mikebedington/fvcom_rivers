@@ -124,11 +124,12 @@ class ltls_data_store():
 
         return this_mmol_per_gram
 
-###### River-like class to 
+###### River-like class to
 class ltls_comp_river():
     def __init__(self, river_obj, ltls_data_store, nemo_river = None):
         self.river_obj = river_obj
         self.wrf_catchment_factors = self.river_obj.wrf_catchment_factors
+        self.catchment_precipitation = self.river_obj.catchment_precipitation
 
         self.ltls_data_store = ltls_data_store
 
@@ -137,11 +138,14 @@ class ltls_comp_river():
         self.river_name = self.river_obj.river_name
 
         self.catchment_precipitation = self.river_obj.catchment_precipitation
-        self.addToSeries = self.river_obj.addToSeries        
         self.wrf_catchment_factors = self.river_obj.wrf_catchment_factors
-    
+
         if nemo_river is not None:
             self.nemo_river_obj = nemo_river
+
+    def addToSeries(self, *args, **kwargs):
+        self.river_obj.addToSeries(*args, **kwargs)
+        self.catchment_precipitation = self.river_obj.catchment_precipitation
 
     def train_flux_scaling_model(self, train_start, train_end):
         """

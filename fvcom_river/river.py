@@ -88,16 +88,30 @@ class River:
 		if not self.ceh_gauge_id_no:
 			print(self.river_name + ": Can't retrieve flux, no associated gauge id(s)")
 			return
-	
+
 		if ceh_data_path==None:
 			if not self.ceh_data_path:
 				print(self.river_name + ": Can't retrieve flux no data path specified")
 				return
-			ceh_data_path = self.ceh_data_path
+			else:
+				ceh_data_path = self.ceh_data_path
 
+		flux_data, gauge_lat, gauge_lon = self._fluxNlocParsing(gauge_id_no, ceh_data_path)
+
+		self.gauge_lat = gauge_lat
+		self.gauge_lon = gauge_lon
+
+		if not np.any(flux_data[0]):
+			print(self.river_name + ': Warning no gauge flux data retrieved')
+
+		self.flux = flux_data
+
+		return [flux_data, [gauge_lon, gauge_lat]]
+
+	def _fluxNlocParsing(self, gauge_id_no, ceh_data_path):
 		home_dir = os.getcwd() # Not sure why I can't get the addpath to work so use this clunkier method instead
 		os.chdir(ceh_data_path + '/flux_data/')
-		
+
 		# shell script picks up it's target from this file
 		f = open("stations.csv", "w")
 		f.write(str(gauge_id_no)+", "+self.river_name+"\n")
@@ -107,29 +121,8 @@ class River:
 		subprocess.call(['./get_flux_data.sh'])
 
 		# read in output
-		this_gauge_data = rfun.read_csv_unheaded(str(gauge_id_no)+'_data.csv', 2)
+		flux_data = rfun.read_csv_unheaded(str(gauge_id_no)+'_data.csv', 2)
 
-		# convert the dates to python datetimes to be more useful	
-		date_list = []
-		flux_list = []
-		for i in range(0, len(this_gauge_data[0])):
-			if this_gauge_data[1][i]:
-				flux_list.append(float(this_gauge_data[1][i]))
-				date_list.append(dt.datetime.strptime(this_gauge_data[0][i], '%Y-%m-%d'))
-	
-		# Add the flux to the object	
-		flux = [date_list, flux_list]
-		self.flux = flux
-
-		# And get the river name from the gauge file
-		gauge_name_file = (str(gauge_id_no)+'_name.txt')	
-
-		with open(gauge_name_file, 'rt') as open_file:
-			gauge_river_name_raw = open_file.read().replace('\n', '')
-
-		self.ceh_gauged_river_names.append(gauge_river_name_raw.split(',')[1])
-
-		# And get the location of the gauge
 		gauge_loc_file = (str(gauge_id_no)+'_loc.txt')
 
 		with open(gauge_loc_file, 'rt') as open_file:
@@ -144,14 +137,17 @@ class River:
 		gauge_loc_os = os_conversion.OS_text_convert(gauge_loc_os_text)
 		[gauge_lat, gauge_lon] = os_conversion.OStoLL(gauge_loc_os[0], gauge_loc_os[1])
 
-		self.gauge_lat = gauge_lat
-		self.gauge_lon = gauge_lon
+		# convert the dates to python datetimes to be more useful
+		date_list = []
+		flux_list = []
+		for i in range(0, len(flux_data[1])):
+			if flux_data[1][i]:
+				flux_list.append(float(flux_data[1][i]))
+				date_list.append(dt.datetime.strptime(flux_data[0][i], '%Y-%m-%d'))
 
-		if not flux[0]:
-			print(self.river_name + ': Warning no gauge flux data retrieved')
+		flux_data = [date_list, flux_list]
 
-		return [flux, [gauge_lon, gauge_lat]]
-	
+		return flux_data, gauge_lat, gauge_lon
 
 	def getGaugeFluxSeries(self, start_date, end_date):
 		if not isinstance(start_date, dt.datetime) and isinstance(end_date, dt.datetime):
@@ -276,47 +272,64 @@ class River:
 			wrf_data_path = self.wrf_data_path
 
 		wrf_squares = rfun.make_WRF_squares_list(wrf_data_path)
-		
+
 		wrf_catchment_factors = np.zeros(np.squeeze(wrf_squares[0,0,:,:].shape))
 
 		# First to reduce computation grab only the WRF 'squares' where at least one corner is within the bounding box
 		corners_in_catchment = (wrf_squares[:,0,:,:] > c_bbox[0,0]) & (wrf_squares[:,0,:,:] < c_bbox[1,0]) & (wrf_squares[:,1,:,:] > c_bbox[0,1]) & (wrf_squares[:,1,:,:] < c_bbox[1,1])
-		
-		partial_inside = np.any(corners_in_catchment, axis=0)  
-	
-		# Turn the catchment into a geometry poly so we can do intersections	
+
+		partial_inside = np.any(corners_in_catchment, axis=0)
+
+		# Turn the catchment into a geometry poly so we can do intersections
 		catchment_poly = gm.Polygon(c_poly_points)
 
 		# Loop over the WRF 'squares' which have one corner falling in the bounding box and add their factor to the matrix
 		for these_indices in np.asarray(np.where(partial_inside)).T:
 			# Get the four corners
 			this_square_poly = gm.Polygon(wrf_squares[:,:,these_indices[0], these_indices[1]])
-			
+
 			# proportion in catchment area
 			wrf_catchment_factors[these_indices[0], these_indices[1]] = this_square_poly.intersection(catchment_poly).area / this_square_poly.area
-		
+
 		# We missed out the first and last row and column of the WRF lat lon when defining the squares so reinsert them
 		wrf_catchment_factors_adj = np.zeros([wrf_catchment_factors.shape[0]+2, wrf_catchment_factors.shape[1]+2])
 		wrf_catchment_factors_adj[1:-1, 1:-1] = wrf_catchment_factors
-	
-		self.wrf_catchment_factors = wrf_catchment_factors_adj	
-		# Add to the river object	
-		return wrf_catchment_factors_adj		
 
+		self.wrf_catchment_factors = wrf_catchment_factors_adj
+		# Add to the river object
+		return wrf_catchment_factors_adj
 
-	def addToSeries(self, att_series, add_series, dates):
+	def addToSeries(self, att_series, add_series, dates, override=False):
 		# A general method for adding data to one of the objects series (i.e. cathment_precipitation, catchment_temp)
 		this_series = getattr(self, att_series, [])
 
 		# We're doing list append so don't want to double up dates, this should probably be replaced by functionality which replaces already existing dates
 		not_existing_dates = [x for x,y in enumerate(dates) if y not in this_series[0]]
-		add_series = np.asarray(add_series)[not_existing_dates]
-		dates = np.asarray(dates)[not_existing_dates]
-		
+		add_series_new = np.asarray(add_series)[not_existing_dates]
+		dates_new = np.asarray(dates)[not_existing_dates]
+
 		# Add the new data
-		for i in range(0, len(dates)):
-			this_series[0].append(dates[i])
-			this_series[1].append(add_series[i])		
+		for i in range(0, len(dates_new)):
+			this_series[0].append(dates_new[i])
+			this_series[1].append(add_series_new[i])
+
+		if override and not len(not_existing_dates) == len(dates):
+			existing_bool = np.ones(len(dates), dtype=bool)
+			existing_bool[not_existing_dates] = False
+
+			override_series = np.asarray(add_series)[existing_bool]
+			override_dates = np.asarray(dates)[existing_bool]
+
+			for i, this_date in enumerate(override_dates):
+				this_series_ind = this_series[0].index(this_date)
+				this_series[1][this_series_ind] = override_series[i]
+
+		# resort by date
+		sort_ind = np.asarray(this_series[0]).argsort()
+		this_series = [list(np.asarray(this_series[0])[sort_ind]), list(np.asarray(this_series[1])[sort_ind])]
+
+		# add back to self
+		setattr(self, att_series, this_series)
 
 	def retrieveWRFSeries(self,years, wrf_data_path=None):
 		# Get mean temperature from the WRF model across the catchment area for the years in the list 'years'
