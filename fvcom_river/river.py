@@ -13,6 +13,7 @@ import sqlite3 as sq
 from sklearn import datasets, linear_model
 import matplotlib.pyplot as plt
 import pickle
+import glob as gb
 
 from keras.models import Sequential
 from keras.models import load_model
@@ -782,14 +783,65 @@ class RiverMulti(River):
 	def makeWRFCatchmentFactors(self):
 		# Overwritten method to deal with multiple catchment areas
 		all_cf = []
-		
+
 		for i in range(0, len(self.catchment_poly_points)):
 			all_cf.append(River.makeWRFCatchmentFactors(self, self.catchment_bbox[i], self.catchment_poly_points[i]))
 
 		wrf_catchment_factors = np.zeros(all_cf[0].shape)
-		
+
 		for this_cf in all_cf:
 			wrf_catchment_factors = wrf_catchment_factors + this_cf
 
+		self.wrf_catchment_factors = wrf_catchment_factors
+
+		return wrf_catchment_factors
+
+
+class RiverMultiRoi(RiverMulti):
+	def _fluxNlocParsing(self, gauge_id_no, ceh_data_path):
+		quality_ok = ['31', 'C', 'F', 'B', 'P', '*']
+		gauge_flux_file = '{}flux_data/{}_flux.csv'.format(ceh_data_path, gauge_id_no)
+		flux_data_raw = np.asarray(rfun.read_csv_unheaded(gauge_flux_file, 4))
+
+		time_dt = np.asarray([dt.datetime.strptime('{} {}'.format(this_data[0], this_data[1]), '%Y/%m/%d %H:%M:%S') for this_data in flux_data_raw[0:2,:].T])
+		flux = flux_data_raw[2,:]
+		qual_flag = flux_data_raw[3,:]
+		qual_pass = np.isin(qual_flag, quality_ok)
+		qual_pass = np.logical_and(qual_pass, np.invert(flux == ''))
+		flux_data = [time_dt[qual_pass], np.asarray(flux[qual_pass], dtype=float)]
+
+		gauge_loc_file = '{}flux_data/{}_loc.txt'.format(ceh_data_path, gauge_id_no)
+		loc_data_raw = np.loadtxt(gauge_loc_file, delimiter=',', dtype=str)
+		gauge_lat = float(loc_data_raw[3])
+		gauge_lon = float(loc_data_raw[4])
+
+		return flux_data, gauge_lat, gauge_lon
+
+	def retrieveGaugeCatchment(self, rosa_data_path, rose_gauge_no):
+		# Overwritten method to get the rosa scale shape file
+		catchment_shp_filestr = gb.glob('{}/{}/*.shp'.format(rosa_data_path, rose_gauge_no))
+
+		this_catchment_shp = shapefile.Reader(catchment_shp_filestr[0][0:-4])
+
+		# We want to turn the .shp file into a list of coordinates for the corners of the polygon, first we retrieve the list of coordinates
+		if len(this_catchment_shp.shapeRecords()) == 1:
+			 catchment_poly_points = this_catchment_shp.shapeRecords()[0].shape.points
+		else:
+			print('Error - More than one catchment area defined')
+			return
+
+		# and a couple of other useful bits of info about the catchment: the bounding box and the total area of the catchment
+		catchment_bbox = this_catchment_shp.bbox
+		catchment_area = (gm.Polygon(catchment_poly_points)).area
+
+		# add tp river object
+		self.catchment_poly_points = catchment_poly_points
+		self.catchment_bbox = np.asarray(catchment_bbox).reshape([2,2])
+		self.catchment_area = catchment_area
+
+		return [catchment_poly_points, catchment_bbox, catchment_area]
+
+	def makeWRFCatchmentFactors(self):
+		wrf_catchment_factors = River.makeWRFCatchmentFactors(self, self.catchment_bbox, self.catchment_poly_points)
 		return wrf_catchment_factors
 
