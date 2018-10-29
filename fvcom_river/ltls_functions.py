@@ -41,7 +41,7 @@ class ltls_data_store():
 
         if ox_weight is None:
             ox_weight = 32
-        
+
         setattr(self, 'O2_conc', getattr(self, 'O2')*ox_weight)
 
     def retrieve_monthly_nutrient(self, nutrient_nc):
@@ -94,7 +94,7 @@ class ltls_data_store():
         return self.time_dt[time_sel], self.river_flux[time_sel]
 
     def get_nutrient_daily(self, start_date, end_date, nutrient):
-        choose_dates = np.logical_and(self.time_dt >= start_date, self.time_dt <= end_date)    
+        choose_dates = np.logical_and(self.time_dt >= start_date, self.time_dt <= end_date)
         return self.time_dt[choose_dates], getattr(self, nutrient)[choose_dates]
 
     def get_nutrient_daily_interp(self, start_date, end_date, nutrient):
@@ -155,7 +155,7 @@ class ltls_comp_river():
         lf.fit(gauge_data.reshape(-1, 1), ltls_data)
 
         self.ltls_flux_mod = [lf.intercept_, lf.coef_, lf.score(gauge_data.reshape(-1, 1), ltls_data)]
-    
+
     def plotRescaleVsLTLS(self, start_date, end_date):
         """
         Plot the rescaled river flux against the ltls data to assess the model produced by self.rescale_flux
@@ -187,22 +187,22 @@ class ltls_comp_river():
         """
         Get the predicted flux (underlying river object gauge flux (observed or modelled) then with ltls rescaling applied
         """
-        date_list, raw_flux = self.river_obj.getGaugeFluxSeries(start_date, end_date)        
+        date_list, raw_flux = self.river_obj.getGaugeFluxSeries(start_date, end_date)
         flux_list = self.ltls_flux_mod[0] + self.ltls_flux_mod[1]*np.asarray(raw_flux)
-        
+
         return date_list, list(flux_list)
 
     def getTempModelSeries(self, start_date, end_date):
         """
         Get the series of predicted river temperatures, this either from interpolating monthly ltls data (if self.use_ltls_temp is
-        True, this is not passed in this function to allow it to mimic a river object) or from the temperature regression model of the 
+        True, this is not passed in this function to allow it to mimic a river object) or from the temperature regression model of the
         river object
 
         """
 
         if hasattr(self,'use_ltls_temp') and self.use_ltls_temp:
             date_list, temp_list = self.getNutrientSeries('temp', start_date, end_date)
-        else:    
+        else:
             date_list, temp_list = self.river_obj.getTempModelSeries(start_date,end_date)
 
         return date_list, temp_list
@@ -224,7 +224,7 @@ class ltls_comp_river():
             ersem_to_ltls_var = self.ersem_to_ltls_var
         else:
             ersem_to_ltls_var = {'N4_n':'amm_conc', 'N3_n':'nit_conc', 'O2_o':'O2_conc', 'N1_p':'tdp_conc', 'temp':'temp'}
-    
+
         if nutrient_name in ersem_to_ltls_var.keys():
             this_ltls = ersem_to_ltls_var[nutrient_name]
             if hasattr(self.ltls_data_store, this_ltls):
@@ -234,7 +234,7 @@ class ltls_comp_river():
         elif hasattr(self, 'nemo_river_obj') and hasattr(self.nemo_river_obj, nutrient_name):
             date_list, nutrient_list = self.nemo_river_obj.getNutrientSeries(nutrient_name, start_date, end_date)
         else:
-            date_list = [start_date + dt.timedelta(days=int(i)) for i in np.arange(0, (end_date - start_date).days +1)] 
+            date_list = [start_date + dt.timedelta(days=int(i)) for i in np.arange(0, (end_date - start_date).days +1)]
             nutrient_list = np.zeros(len(date_list))
 
         return date_list, nutrient_list
@@ -271,7 +271,7 @@ class nemoRiver():
     def _add_all_vars(self, vars_list, nemo_nc):
         for this_var in vars_list:
             try:
-                try:    
+                try:
                     setattr(self, this_var, nemo_nc.variables[this_var][:, self.river_index_no])
                 except AttributeError:
                     setattr(self, this_var, nemo_nc[this_var][:, self.river_index_no])
@@ -279,7 +279,7 @@ class nemoRiver():
                 print('No {} in nemo river'.format(this_var))
                 vars_list.remove(this_var)
         self.vars_list = vars_list
-    
+
     def _expandDateSeries(self, start_date, end_date):
         dates_yday = np.asarray([this_date.timetuple().tm_yday for this_date in self.dates])
         yday_unique, yday_map = np.unique(dates_yday, return_index=True)
@@ -291,7 +291,7 @@ class nemoRiver():
             all_dates_yday[all_dates_yday == 366] = 365 # deal with leap years if there aren't any in the original data
 
         new_yday_unique, new_yday_map = np.unique(all_dates_yday, return_inverse=True)
-            
+
         old_to_new_unique = []
         for this_day in new_yday_unique:
             old_to_new_unique.append(yday_map[yday_unique == this_day][0])
@@ -309,17 +309,17 @@ class nemoRiver():
         return date_list, flux_list
 
     def getTempModelSeries(self, start_date, end_date):
-        date_list, temp_list = self.getNutrientSeries('river_temp', start_date, end_date)    
+        date_list, temp_list = self.getNutrientSeries('river_temp', start_date, end_date)
         return date_list, temp_list
 
     def getSalinitySeries(self, start_date, end_date):
-        date_list, sal_list = self.getNutrientSeries('river_salt', start_date, end_date)   
+        date_list, sal_list = self.getNutrientSeries('river_salt', start_date, end_date)
         return date_list, sal_list
 
     def getNutrientSeries(self, nutrient_name, start_date, end_date, **kwargs):
         date_list = [start_date + dt.timedelta(days = int(i)) for i in np.arange(0, (end_date - start_date).days + 1)]
         dates_choose = np.isin(self.dates, date_list)
-        nutrient_list = [this_entry for this_entry in getattr(self, nutrient_name)[dates_choose]]    
+        nutrient_list = [this_entry for this_entry in getattr(self, nutrient_name)[dates_choose]]
         return date_list, nutrient_list
 
 
