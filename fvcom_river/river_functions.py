@@ -53,7 +53,7 @@ def read_csv_unheaded(filename, cols):
 
 			for row in this_file_data:
 				this_list.append(row[i])
-		
+
 		output.append(this_list)
 	return output
 
@@ -82,12 +82,12 @@ def read_csv_dict(filename):
 	return output
 
 def make_date_list(start_date, end_date, step):
-	# returns a list of datetimes going from start_date to end_date with an interval of step where step is in days (fractional for hours).	
+	# returns a list of datetimes going from start_date to end_date with an interval of step where step is in days (fractional for hours).
 	date_list = []
 	for n in np.arange(0,(end_date - start_date).days + 1, step):
 		date_list.append(start_date + dt.timedelta(int(n)))
 
-	return date_list	
+	return date_list
 
 def add_year_both_series(river_list, years, wrf_directory):
 	# get wrf data one year at a time
@@ -129,24 +129,24 @@ def ll_dist(lon1, lat1, lon2, lat2):
 	dist - distance between point one and two
 
 	"""
-	# convert decimal degrees to radians 
+	# convert decimal degrees to radians
 	lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
 
-	# haversine formula 
-	dlon = lon2 - lon1 
-	dlat = lat2 - lat1 
+	# haversine formula
+	dlon = lon2 - lon1
+	dlat = lat2 - lat1
 	a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-	c = 2 * asin(sqrt(a)) 
+	c = 2 * asin(sqrt(a))
 	r = 6371 # Radius of earth in kilometers. Use 3956 for miles
 	return c * r
 
 def missing_val_interpolate(series_date_list, series, **kwargs):
-	
+
 	if 'complete_dates' in kwargs:
 		complete_dates = kwargs['complete_dates']
 	else:
 		complete_dates = series_date_list
-	
+
 	series_complete = np.empty(len(complete_dates))
 	series_complete[:] = np.nan
 
@@ -158,7 +158,7 @@ def missing_val_interpolate(series_date_list, series, **kwargs):
 	nans = np.isnan(series_complete)
 	x = lambda z: z.nonzero()[0]
 	series_complete[nans] = np.interp(x(nans), x(~nans), series_complete[~nans])
-	
+
 	return series_complete
 
 def make_generic_temp_model(river_dict, temp_model_file=None, temp_series_lags=None):
@@ -186,31 +186,31 @@ def make_generic_temp_model(river_dict, temp_model_file=None, temp_series_lags=N
 			for this_col, this_lag in enumerate(temp_series_lags):
 				dependents[:,this_col+1] = this_river.getWRFTempTimeLagSeries(this_lag, comp_dates)
 
-			# Add in the heights of the relevant	
+			# Add in the heights of the relevant
 			dependents[:,-2] = obs_heights
 			dependents[:,-1] = this_river.catchment_area
 			dependents[:,0] = obs_temps
 			dependents = dependents[~np.isnan(dependents).any(axis=1)]
-	
+
 			all_fit_data = np.append(all_fit_data, this_river.temp_model_fitdata , axis=0)
-	
+
 	all_fit_data = all_fit_data[1:,:]
 
 	temp_model_general = linear_model.LinearRegression()
 	temp_model_general.fit(all_fit_data[:,1:], all_fit_data[:,0])
-	
+
 	temp_model_dict = {'temp_model':temp_model_general, 'temp_model_lags':temp_series_lags, 'temp_model_fitdata':all_fit_data}
-	
+
 	with open(temp_model_file, 'wb') as output_file:
 		pickle.dump(temp_model_dict, output_file, pickle.HIGHEST_PROTOCOL)
 	output_file.close()
-	
+
 	return temp_model_dict
 
 def apply_near_temp_model(river_dict, dist_threshold=200, model_check=[0]):
 	river_ll = []
 	river_keys = []
-	
+
 	for this_key, this_river in river_dict.items():
 		river_keys.append(this_key)
 		river_ll.append([this_river.mouth_lon, this_river.mouth_lat])
@@ -231,12 +231,12 @@ def apply_near_temp_model(river_dict, dist_threshold=200, model_check=[0]):
 	for this_key, this_river in river_dict.items():
 		if not hasattr(this_river, 'temp_model'):
 			print(this_river.river_name + ': building local temp model')
-			
+
 			near_river_list = river_keys[np.squeeze(river_include[river_keys == this_key,:])]
 			close_river_dict = {}
 			for this_key in near_river_list:
 				close_river_dict[this_key] = river_dict[this_key]
-			
+
 			make_generic_temp_model(close_river_dict, temp_model_file='temp.pk1')
 			this_river.retrieveGenericTempModel(temp_model_file='temp.pk1')
 			gc.collect()
@@ -268,11 +268,11 @@ def apply_catchment_size_temp_model(river_dict, catchment_thresholds, model_chec
 		river_catchment_bands[np.logical_and(river_ca >= this_c_low, river_ca < this_c_high)] = this_ind + 1
 	river_catchment_bands[river_ca >= catchment_thresholds[-1]] = np.max(river_catchment_bands) + 1
 	river_catchment_bands_all = copy.deepcopy(river_catchment_bands)
-	
+
 	useable_bands = np.unique(river_catchment_bands)
 	filenames = ['temp_model_ca_{}.pk1'.format(this_band) for this_band in useable_bands]
 	river_catchment_bands[np.isin(river_keys, exclude_riv)] = -999
-	
+
 	for this_band, this_file in zip(useable_bands, filenames):
 		print('Building band {} temp model'.format(this_band))
 		this_band_rivers = river_keys[river_catchment_bands == this_band]
@@ -286,7 +286,7 @@ def apply_catchment_size_temp_model(river_dict, catchment_thresholds, model_chec
 		if not hasattr(this_river, 'temp_model'):
 			this_river_band = int(river_catchment_bands_all[river_keys == this_key][0])
 			print('River {} has no temp model adding band {} model'.format(this_key, this_river_band))
-			this_model_file = filenames[this_river_band] 
+			this_model_file = filenames[this_river_band]
 			this_river.retrieveGenericTempModel(temp_model_file=this_model_file)
 
 	return river_dict
@@ -338,23 +338,23 @@ def apply_nearest_temp_model(river_dict, distance_catchment_weight=[1,1], model_
 
 	return river_dict
 
-def get_pyfvcom_prep(river_obj_list, start_date, end_date, ersem=False, ersem_vars=None, noisy=False):
+def get_pyfvcom_prep(river_obj_list, start_date, end_date, ersem=False, ersem_vars=None, sediment=False, sediment_vars=None, noisy=False):
 	"""
 	Takes a list of river like objects* and returns the data required by the PyFVCOM preproccesing module (pf.preproc.Model.add_Rivers)
 
 	*e.g. River, RiverMulti, RiverLTLS
-	
+
 
 	Parameters
 	----------
 	river_obj_list : iterator of river like objects
-		The rivers 
+		The rivers
 	start_date, end_date : datetimes
 		The period of river data to output
 	ersem : optional, boolean
 		Whether to output the ersem_dict or not
 	ersem_vars : optional, list of str
-		List of ersem variables to include. If not specified the default list is 
+		List of ersem variables to include. If not specified the default list is
 			['N4_n', 'N3_n', 'O2_o', 'N1_p', 'N5_s', 'O3_c', 'O3_TA', 'O3_bioalk', 'Z4_c', 'Z5_n', 'Z5_p', 'Z5_c', 'Z6_n', 'Z6_p', 'Z6_c']
 
 	Returns
@@ -368,8 +368,8 @@ def get_pyfvcom_prep(river_obj_list, start_date, end_date, ersem=False, ersem_va
 	flux_array : array size no_rivers x no_times
 		Array of river flux values
 	temperature : array size no_rivers x no_times
-		Array of river temperature values 
-	salinity :  
+		Array of river temperature values
+	salinity :
 		Array of river salinity values
 
 	"""
