@@ -187,12 +187,15 @@ class ltls_comp_river():
         plt.savefig(self.river_obj.river_name + '_month_flux_comp.png', dpi=300)
         plt.close()
 
-    def getGaugeFluxSeries(self, start_date, end_date):
+    def getGaugeFluxSeries(self, start_date, end_date, flux_mod=True):
         """
         Get the predicted flux (underlying river object gauge flux (observed or modelled) then with ltls rescaling applied
         """
-        date_list, raw_flux = self.river_obj.getGaugeFluxSeries(start_date, end_date)
-        flux_list = self.ltls_flux_mod[0] + self.ltls_flux_mod[1]*np.asarray(raw_flux)
+        if flux_mod:
+            date_list, raw_flux = self.river_obj.getGaugeFluxSeries(start_date, end_date)
+            flux_list = self.ltls_flux_mod[0] + self.ltls_flux_mod[1]*np.asarray(raw_flux)
+        else:
+            date_list, flux_list = self.river_obj.getGaugeFluxSeries(start_date, end_date)
 
         return date_list, list(flux_list)
 
@@ -206,6 +209,8 @@ class ltls_comp_river():
 
         if hasattr(self,'use_ltls_temp') and self.use_ltls_temp:
             date_list, temp_list = self.getNutrientSeries('temp', start_date, end_date)
+        elif hasattr(self,'use_nemo_temp') and self.use_nemo_temp:
+            date_list, temp_list = self.nemo_river_obj.getTempModelSeries(start_date, end_date)
         else:
             date_list, temp_list = self.river_obj.getTempModelSeries(start_date,end_date)
 
@@ -285,6 +290,9 @@ class nemoRiver():
         self.vars_list = vars_list
 
     def _expandDateSeries(self, start_date, end_date):
+        start_date = dt.datetime(start_date.year, 1,1)
+        end_date = dt.datetime(end_date.year,12,31)
+
         dates_yday = np.asarray([this_date.timetuple().tm_yday for this_date in self.dates])
         yday_unique, yday_map = np.unique(dates_yday, return_index=True)
 
