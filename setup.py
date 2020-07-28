@@ -7,6 +7,6 @@ setup(name='fvcom_river',
         author='mbe',
         author_email='mbe@pml.ac.uk',
         packages=['fvcom_river'],
-        install_requires=['numpy', 'sqlite3', 'datetime', 'subprocess', 'gpxpy.geo', 'sklearn', 'tensorflow', 'keras'],
+        install_requires=['numpy', 'sqlite3', 'datetime', 'subprocess', 'gpxpy.geo', 'sklearn', 'tensorflow', 'keras==2.3.1'],
         zip_safe=False)
 
