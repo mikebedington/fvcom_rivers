@@ -12,13 +12,6 @@ Neural network flow models
 There is an option to 
 
 
-Th neural network training functions are in nn_functions.py. The python keras package is used for modelling. The nn design used is a Sequential model with two layers (Dense layers, the standard fully connected nn layers), one layer of width    and one with a single output node. The loss function used is mean squared error and the Adam optimiser.
-
-The training data is a series of lagged series and window summed   . If I could get reccurent nns working properly in Python I probably should use them instead.
-
-
-
-
 WRF data
 --------
 

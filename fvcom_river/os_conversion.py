@@ -93,59 +93,59 @@ def OStoLL(E,N):
 
 def read_csv_unheaded(filename, cols):
 
-	output = []
+    output = []
 
-	for i in range(0,cols):
-		this_list = []
+    for i in range(0,cols):
+        this_list = []
 
-		with open(filename, 'rt') as this_file:
-			this_file_data = csv.reader(this_file)
+        with open(filename, 'rt') as this_file:
+            this_file_data = csv.reader(this_file)
 
-			for row in this_file_data:
-				this_list.append(row[i])
+            for row in this_file_data:
+                this_list.append(row[i])
 
-		output.append(this_list)
-	return output
+        output.append(this_list)
+    return output
 
 def OS_text_convert(grid_ref_str):
 
-	grid_sqr = grid_ref_str[0:2]
-	ref = grid_ref_str[2:].strip()
-	
-	try:
-		ref_x = ref[0:int(len(ref)/2)]
-		ref_y = ref[int(len(ref)/2):]
+    grid_sqr = grid_ref_str[0:2]
+    ref = grid_ref_str[2:].strip()
+    
+    try:
+        ref_x = ref[0:int(len(ref)/2)]
+        ref_y = ref[int(len(ref)/2):]
 
-	except:
-		print('Grid reference x and y different lengths')
-		return		
+    except:
+        print('Grid reference x and y different lengths')
+        return        
 
-	ref_grid = OS_letter_conversion_list() 
+    ref_grid = OS_letter_conversion_list() 
 
-	try:
-		x_add = [ref_grid[2][x] for x, y in enumerate(ref_grid[0]) if y == grid_sqr][0]
-		y_add = [ref_grid[1][x] for x, y in enumerate(ref_grid[0]) if y == grid_sqr][0]
-	
-	except:
-		print('Grid 2-letter identifier not recognised')
-		return
+    try:
+        x_add = [ref_grid[2][x] for x, y in enumerate(ref_grid[0]) if y == grid_sqr][0]
+        y_add = [ref_grid[1][x] for x, y in enumerate(ref_grid[0]) if y == grid_sqr][0]
+    
+    except:
+        print('Grid 2-letter identifier not recognised')
+        return
 
-	if x_add == '0':
-		x_add = ''
+    if x_add == '0':
+        x_add = ''
 
-	if y_add == '0':
-		y_add = ''
+    if y_add == '0':
+        y_add = ''
 
-	new_grid = [float(x_add + ref_x) , float(y_add + ref_y)]
-	
-	return new_grid
+    new_grid = [float(x_add + ref_x) , float(y_add + ref_y)]
+    
+    return new_grid
 
 
 def OS_letter_conversion_list():
-	osl_list = [
-	['SV','SW','SX','SY','SZ','TV','SR','SS','ST','SU','TQ','TR','SM','SN','SO','SP','TL','TM','SH','SJ','SK','TF','TG','SC','SD','SE','TA','NW','NX','NY','NZ','OV','NR','NS','NT','NU','NL','NM','NN','NO','NF','NG','NH','NJ','NK','NA','NB','NC','ND','HW','HX','HY','HZ','HU','HT','HP'],
-	['0','0','0','0','0','0','1','1','1','1','1','1','2','2','2','2','2','2','3','3','3','3','3','4','4','4','4','5','5','5','5','5','6','6','6','6','7','7','7','7','8','8','8','8','8','9','9','9','9','10','10','10','10','11','11','12'],
-	['0','1','2','3','4','5','1','2','3','4','5','6','1','2','3','4','5','6','2','3','4','5','6','2','3','4','5','1','2','3','4','5','1','2','3','4','0','1','2','3','0','1','2','3','4','0','1','2','3','1','2','3','4','3','4','4']]
-	return osl_list
+    osl_list = [
+    ['SV','SW','SX','SY','SZ','TV','SR','SS','ST','SU','TQ','TR','SM','SN','SO','SP','TL','TM','SH','SJ','SK','TF','TG','SC','SD','SE','TA','NW','NX','NY','NZ','OV','NR','NS','NT','NU','NL','NM','NN','NO','NF','NG','NH','NJ','NK','NA','NB','NC','ND','HW','HX','HY','HZ','HU','HT','HP'],
+    ['0','0','0','0','0','0','1','1','1','1','1','1','2','2','2','2','2','2','3','3','3','3','3','4','4','4','4','5','5','5','5','5','6','6','6','6','7','7','7','7','8','8','8','8','8','9','9','9','9','10','10','10','10','11','11','12'],
+    ['0','1','2','3','4','5','1','2','3','4','5','6','1','2','3','4','5','6','2','3','4','5','6','2','3','4','5','1','2','3','4','5','1','2','3','4','0','1','2','3','0','1','2','3','4','0','1','2','3','1','2','3','4','3','4','4']]
+    return osl_list
 
-	
+    

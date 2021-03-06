@@ -118,6 +118,34 @@ def add_year_both_series(river_list, years, wrf_directory):
                 except:
                     print('Not updating river {}'.format(this_river_raw.river_name))
 
+def add_year_both_series_new(river_list, years, wrf_directory):
+    # get wrf data one year at a time
+    for this_year in years:
+        this_year_data = rv.read_WRF_year_new(this_year, wrf_directory)
+
+        for this_river_raw in river_list:
+          #  try:
+                if hasattr(this_river_raw, 'river_obj'):
+                    this_river = this_river_raw.river_obj
+                else:
+                    this_river = this_river_raw
+
+                this_river_year_series_rain = np.sum(np.sum(this_year_data['RAINNC']*this_river.wrf_catchment_factors, axis=2), axis=1)
+                this_river.addToSeries('catchment_precipitation', this_river_year_series_rain, this_year_data['times'])
+                this_river_year_series_rain = None
+
+                this_river_year_series_temp = np.zeros(len(this_year_data['times']))
+
+                for i in range(0, len(this_year_data['times'])):
+                    this_river_year_series_temp[i] = np.average(this_year_data['T2'][i,:,:], weights=this_river.wrf_catchment_factors)
+
+                this_river.addToSeries('catchment_temp', this_river_year_series_temp, this_year_data['times'])
+
+                this_river_year_series_temp = None
+          #  except:
+          #      print('Not updating river {}'.format(this_river_raw.river_name))
+
+
 def ll_dist(lon1, lat1, lon2, lat2):
     """
     Calculate the great circle distance between two points

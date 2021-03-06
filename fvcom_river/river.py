@@ -5,6 +5,7 @@ import subprocess
 import os
 import shapefile
 from shapely import geometry as gm
+from shapely.ops import cascaded_union
 import datetime as dt
 import csv
 import copy
@@ -14,6 +15,7 @@ from sklearn import datasets, linear_model
 import matplotlib.pyplot as plt
 import pickle
 import glob as gb
+import netCDF4 as nc
 
 from keras.models import Sequential
 from keras.models import load_model
@@ -210,7 +212,7 @@ class River:
             gauge_id_no = str(args[0])
         else:
             if not self.ceh_gauge_id_no:
-                print(self.river_name + ': No gauge id specified, expecting catchment file named ' +self.river_name + '.shp')
+                print(self.river_name + ': No gauge id specified, expecting catchment file named ' + self.river_name + '.shp')
                 gauge_id_no = self.river_name
             else:
                 gauge_id_no = str(self.ceh_gauge_id_no)
@@ -886,19 +888,33 @@ class RiverMultiRoi(RiverMulti):
                 print(self.river_name + ": Can't retrieve temp observations no data path specified")
                 return
             EA_data_path = self.EA_data_path
+        
+        gauge_temps = []
+        for this_gauge_id in self.ceh_gauge_id_no:
+            try:
+                temperature_filestr = gb.glob('{}/{}temp.csv'.format(EA_data_path, rose_gauge_no)) 
+                filedata = np.loadtxt(temperature_filestr[0],delimiter=',',dtype=str)
 
-        temperature_filestr = gb.glob('{}/{}temp.csv'.format(EA_data_path, rose_gauge_no)) 
-        filedata = np.loadtxt(temperature_filestr[0],delimiter=',',dtype=str)
+                dates_dt = []
+                temps = []
 
-        dates_dt = []
-        temps = []
+                for this_row in filedata:
+                    dates_dt.append(dt.datetime.strptime('{} {}'.format(this_row[0], this_row[1]),'%d/%m/%Y %H:%M:%S'))
+                    temps.append(float(this_row[2]))
+                gauge_temps.append([np.asarray(date_dt), np.asarray(temps)])
 
-        for this_row in filedata:
-            dates_dt.append(dt.datetime.strptime('{} {}'.format(this_row[0], this_row[1]),'%d/%m/%Y %H:%M:%S'))
-            temps.append(float(this_row[2]))
+            except:
+                pass
 
         # Do something about having multiple measurements from different gauges
-
+        if len(gauge_temps) == 0:
+            print('No temperature observations available')
+        else:
+            all_dates_list = np.unique([item for sublist in gauge_temps for item in sublist[0]])
+            mean_temps = []
+            for this_date in all_dates_list:
+                pass 
+            
 
         # Throw away non-midday temperatures
 
@@ -908,8 +924,6 @@ class RiverMultiRoi(RiverMulti):
 
 
         # Gauges are relatively close to the mouths and we don't know heights so put a small number in
-
-
 
         site_dists = np.zeros(len(db_data[0]))
         for i in range(0, len(site_dists)):
@@ -926,10 +940,10 @@ class RiverMultiRoi(RiverMulti):
         return db_data
 
 
-class RiverMultiEMODNET(RiverMulti):
+class RiverEMODNET(River):
     def _fluxNlocParsing(self, gauge_id_no, ceh_data_path):
 
-        if this_gauge[0:2] in ['EX', 'IF']:
+        if gauge_id_no[0:2] in ['EX', 'IF']:
             country_code = 'GL'
         else:
             country_code = 'NO'
@@ -939,8 +953,13 @@ class RiverMultiEMODNET(RiverMulti):
         else:
             qc_pass_codes = [1,5]
 
-        this_filestr = '{}{}/{}_TS_RF_{}.nc'.format(ceh_data_path, gauge_id_no, country_code, gauge_id_no)
-        this_gauge_nc = nc.Dataset(this_filestr, 'r')
+        this_filestr = '{}flux_data/{}/{}_TS_RF_{}.nc'.format(ceh_data_path, gauge_id_no, country_code, gauge_id_no)
+
+        try:
+            this_gauge_nc = nc.Dataset(this_filestr, 'r')
+        except OSError:
+            print("Can't find {}".format(this_filestr))
+            return
 
         this_flow = np.squeeze(this_gauge_nc['RVFL'][:])
         this_flow_qc = np.squeeze(this_gauge_nc['RVFL_QC'][:])
@@ -951,9 +970,9 @@ class RiverMultiEMODNET(RiverMulti):
         this_flow_time = this_flow_time[this_flow_qc_bool]
 
         this_flow_int = np.arange(np.ceil(np.min(this_flow_time)), np.floor(np.max(this_flow_time))+1)
-        this_flow_interped = sp.interp(this_flow_int, this_flow_time, np.squeeze(this_flow))
+        this_flow_interped = np.interp(this_flow_int, this_flow_time, np.squeeze(this_flow))
 
-        this_flow_dt = np.asarray([ref_date + dt.timedelta(days=float(this_time)) for this_time in this_flow_int])
+        this_flow_dt = np.asarray([self.ref_date + dt.timedelta(days=float(this_time)) for this_time in this_flow_int])
 
         flux_data = [this_flow_dt, this_flow_interped]
 
@@ -961,6 +980,133 @@ class RiverMultiEMODNET(RiverMulti):
         gauge_lon = this_gauge_nc.variables['LONGITUDE'][:][0]
 
         return flux_data, gauge_lat, gauge_lon
+
+    def retrieveGaugeCatchment(self, gauge_name=None):
+        if gauge_name == None:
+            gauge_name = self.ceh_gauged_river_names
+
+        # Overwritten method to get the rosa scale shape file
+        catchment_shp_filestr = gb.glob('{}catchments/{}/*.shp'.format(self.ceh_data_path, gauge_name))
+
+        this_catchment_shp = shapefile.Reader(catchment_shp_filestr[0])
+
+        # We want to turn the .shp file into a list of coordinates for the corners of the polygon, first we retrieve the list of coordinates
+        all_polys = []
+        for this_rec in this_catchment_shp.shapeRecords():
+            all_polys.append(this_rec.shape.points)
+
+        raw_polys = []
+        for this_ll in all_polys:
+            raw_polys.append(gm.Polygon(this_ll))
+
+        catchment_poly_points = cascaded_union(raw_polys).exterior.xy
+        catchment_poly_points = np.asarray([np.asarray(catchment_poly_points[0]), np.asarray(catchment_poly_points[1])]).T
+    
+        # some are a bit complicated causing self intersections so smooth the boundaries a bit
+        raw_poly = gm.Polygon(catchment_poly_points)
+        smooth_poly = raw_poly.buffer(0.001)
+        smooth_poly = smooth_poly.buffer(-0.001)
+        catchment_poly_points = np.asarray([smooth_poly.exterior.xy[0], smooth_poly.exterior.xy[1]]).T
+
+        # and a couple of other useful bits of info about the catchment: the bounding box and the total area of the catchment
+        catchment_bbox = smooth_poly.bounds
+        catchment_area = smooth_poly.area
+
+        # need to reverse the lat/lon in poly points and bbox
+        catchment_bbox = np.asarray(catchment_bbox).reshape([2,2])
+        catchment_bbox = catchment_bbox[:,[1,0]]
+        catchment_poly_points = np.asarray(catchment_poly_points)[:,[1,0]]
+
+        # add tp river object
+        self.catchment_poly_points = catchment_poly_points
+        self.catchment_bbox = catchment_bbox
+        self.catchment_area = catchment_area
+
+        return [catchment_poly_points, catchment_bbox, catchment_area]
+
+class RiverMultiEMODNET(RiverEMODNET):
+    def retrieveFlux(self, ceh_data_path=None):
+        flux_dict = {}
+        all_gauge_lon = []
+        all_gauge_lat = []
+
+        if ceh_data_path==None:
+            if not self.ceh_data_path:
+                print(self.river_name + ": Can't retrieve flux no data path specified")
+                return
+            ceh_data_path = self.ceh_data_path
+
+        for this_gauge in self.ceh_gauge_id_no:
+            # run method from super for each id
+            [flux_dict[this_gauge], this_gauge_ll]  = River.retrieveFlux(self, this_gauge, ceh_data_path=ceh_data_path)
+            all_gauge_lon.append(this_gauge_ll[0])
+            all_gauge_lat.append(this_gauge_ll[1])
+
+        # find the dates for which all gauge data exists
+        common_dates = list(flux_dict.values())[0][0]
+
+        for this_keys, this_gauge_flux in flux_dict.items():
+            common_dates = list(set(common_dates).intersection(set(this_gauge_flux[0])))
+
+        common_dates.sort()
+
+        # now sum all the gauge data for those dates
+        total_flux = []
+        for this_date in common_dates:
+            this_flux = 0
+            for this_key, this_gauge_flux in flux_dict.items():
+                if [this_gauge_flux[1][x] for x,y in enumerate(this_gauge_flux[0]) if y == this_date]:
+                    this_flux = this_flux + [this_gauge_flux[1][x] for x,y in enumerate(this_gauge_flux[0]) if y == this_date][0]
+            total_flux.append(this_flux)
+
+        flux = [common_dates, total_flux]
+        self.flux = flux
+        self.gauge_lon = all_gauge_lon
+        self.gauge_lat = all_gauge_lat
+
+        return [flux, [all_gauge_lon, all_gauge_lat]]
+
+    def retrieveGaugeCatchment(self, ceh_data_path=None):
+        # Overwritten method to get multiple shape files
+
+        catchment_poly_points = []
+        catchment_bbox = []
+        catchment_area = 0
+
+        if ceh_data_path==None:
+            if not self.ceh_data_path:
+                print(self.river_name + ": Can't retrieve flux no data path specified")
+                return
+        else:
+            self.ceh_data_path = ceh_data_path
+
+        for this_gauge in self.ceh_gauged_river_names:
+            [this_cpp, this_bbox, this_ca] = RiverEMODNET.retrieveGaugeCatchment(self, this_gauge)
+            catchment_poly_points.append(this_cpp)
+            catchment_bbox.append(this_bbox)
+            catchment_area = catchment_area + this_ca
+
+        self.catchment_poly_points = catchment_poly_points
+        self.catchment_bbox = catchment_bbox
+        self.catchment_area = catchment_area
+
+        return [catchment_poly_points, catchment_bbox, catchment_area]
+
+    def makeWRFCatchmentFactors(self):
+        # Overwritten method to deal with multiple catchment areas
+        all_cf = []
+
+        for i in range(0, len(self.catchment_poly_points)):
+            all_cf.append(River.makeWRFCatchmentFactors(self, self.catchment_bbox[i], self.catchment_poly_points[i]))
+
+        wrf_catchment_factors = np.zeros(all_cf[0].shape)
+
+        for this_cf in all_cf:
+            wrf_catchment_factors = wrf_catchment_factors + this_cf
+
+        self.wrf_catchment_factors = wrf_catchment_factors
+
+        return wrf_catchment_factors
 
 
 class RiverSimple(River):
