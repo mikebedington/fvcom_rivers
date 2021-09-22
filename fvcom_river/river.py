@@ -515,6 +515,14 @@ class River:
         comp_dates = np.asarray(copy.deepcopy(self.temp_gauge_data[0]))
         obs_heights = np.asarray(copy.deepcopy(self.temp_gauge_data[4]))
 
+        # trim to only observations within the period we have WRF data
+        remove_dates = np.logical_or(comp_dates < np.min(self.catchment_temp[0]),
+                            comp_dates > np.max(self.catchment_temp[0]))
+
+        obs_temps = obs_temps[~remove_dates]
+        comp_dates = comp_dates[~remove_dates]
+        obs_heights = obs_heights[~remove_dates]
+
         if len(obs_temps) < self.temp_obs_dist_threshold:
             print(self.river_name + ': Insufficient observations for training temp model')
             return
